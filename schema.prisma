@@ -1,0 +1,151 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Plan {
+  FREE
+  PRO
+  ULTRA
+}
+
+enum LeadStage {
+  NEW
+  CONTACTED
+  PROPOSAL
+  NEGOTIATION
+  WON
+  LOST
+}
+
+enum ProjectStatus {
+  TODO
+  IN_PROGRESS
+  REVIEW
+  DONE
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PAID
+  OVERDUE
+}
+
+enum Role {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+// Every business row is scoped to one Organization (row-level isolation)
+model Organization {
+  id            String   @id @default(cuid())
+  name          String
+  plan          Plan     @default(FREE)
+  razorpayCustomerId String?
+  razorpaySubscriptionId String?
+  createdAt     DateTime @default(now())
+
+  users     User[]
+  clients   Client[]
+  leads     Lead[]
+  projects  Project[]
+  invoices  Invoice[]
+}
+
+model User {
+  id             String   @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  name           String
+  email          String   @unique
+  passwordHash   String
+  role           Role     @default(OWNER)
+  createdAt      DateTime @default(now())
+}
+
+model Client {
+  id             String   @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  name           String
+  company        String?
+  email          String?
+  phone          String?
+  gstin          String?
+  notes          String?
+  portalToken    String?  @unique // magic-link token for client portal access
+  createdAt      DateTime @default(now())
+
+  projects Project[]
+  invoices Invoice[]
+}
+
+model Lead {
+  id             String   @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  name           String
+  company        String?
+  email          String?
+  phone          String?
+  value          Decimal? @db.Decimal(12, 2)
+  stage          LeadStage @default(NEW)
+  nextFollowUp   DateTime?
+  notes          String?
+  createdAt      DateTime @default(now())
+}
+
+model Project {
+  id             String   @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  clientId       String
+  client         Client   @relation(fields: [clientId], references: [id])
+  title          String
+  description    String?
+  status         ProjectStatus @default(TODO)
+  budget         Decimal? @db.Decimal(12, 2)
+  dueDate        DateTime?
+  createdAt      DateTime @default(now())
+
+  invoices Invoice[]
+}
+
+model Invoice {
+  id             String   @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  clientId       String
+  client         Client   @relation(fields: [clientId], references: [id])
+  projectId      String?
+  project        Project? @relation(fields: [projectId], references: [id])
+  number         String
+  status         InvoiceStatus @default(DRAFT)
+  subtotal       Decimal  @db.Decimal(12, 2)
+  gstRate        Decimal  @db.Decimal(5, 2) @default(18)
+  gstAmount      Decimal  @db.Decimal(12, 2)
+  total          Decimal  @db.Decimal(12, 2)
+  issueDate      DateTime @default(now())
+  dueDate        DateTime?
+  paidAt         DateTime?
+  items          InvoiceItem[]
+  createdAt      DateTime @default(now())
+
+  @@unique([organizationId, number])
+}
+
+model InvoiceItem {
+  id         String  @id @default(cuid())
+  invoiceId  String
+  invoice    Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  description String
+  quantity   Decimal @db.Decimal(10, 2) @default(1)
+  rate       Decimal @db.Decimal(12, 2)
+  amount     Decimal @db.Decimal(12, 2)
+}
